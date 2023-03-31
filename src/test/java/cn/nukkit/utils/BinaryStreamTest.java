@@ -50,7 +50,7 @@ class BinaryStreamTest {
 
     @Test
     void putSlotGetSlotNoTag() {
-        Item item = new Item(1000, 0, 1, "Test");
+        Item item = new Item(500, 0, 1, "Test");
         stream.putSlot(item);
         stream.setOffset(0);
         Item read = stream.getSlot();
@@ -68,7 +68,7 @@ class BinaryStreamTest {
 
     @Test
     void putSlotGetSlotCustomName() {
-        Item item = new Item(1000, 0, 1, "Test");
+        Item item = new Item(500, 0, 1, "Test");
         item.setCustomName("CustomName");
         stream.putSlot(item);
         stream.setOffset(0);
@@ -81,6 +81,7 @@ class BinaryStreamTest {
         Skin skin = new Skin();
         skin.setSkinData(new byte[Skin.SINGLE_SKIN_SIZE]);
         skin.setSkinId("id");
+        skin.setFullSkinId("idid");
         skin.setCapeData(new byte[Skin.SINGLE_SKIN_SIZE]);
         skin.setTrusted(true);
         skin.setAnimationData("animation");

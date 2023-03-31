@@ -7,21 +7,18 @@ import cn.nukkit.api.*;
 import cn.nukkit.block.*;
 import cn.nukkit.blockentity.BlockEntityPistonArm;
 import cn.nukkit.blockstate.BlockState;
-import cn.nukkit.entity.component.EntityComponent;
-import cn.nukkit.entity.component.EntityComponentGroup;
-import cn.nukkit.entity.component.EntityComponentRegistery;
-import cn.nukkit.entity.component.SimpleEntityComponentGroup;
 import cn.nukkit.entity.custom.CustomEntity;
 import cn.nukkit.entity.custom.CustomEntityDefinition;
 import cn.nukkit.entity.data.*;
-import cn.nukkit.entity.item.EntityArmorStand;
-import cn.nukkit.entity.item.EntityItem;
-import cn.nukkit.entity.mob.EntityEnderDragon;
-import cn.nukkit.entity.projectile.EntityProjectile;
+import cn.nukkit.entity.item.*;
+import cn.nukkit.entity.mob.*;
+import cn.nukkit.entity.passive.*;
+import cn.nukkit.entity.projectile.*;
 import cn.nukkit.entity.provider.ClassEntityProvider;
 import cn.nukkit.entity.provider.CustomEntityProvider;
 import cn.nukkit.entity.provider.EntityProvider;
 import cn.nukkit.entity.provider.EntityProviderWithClass;
+import cn.nukkit.entity.weather.EntityLightning;
 import cn.nukkit.event.Event;
 import cn.nukkit.event.block.FarmLandDecayEvent;
 import cn.nukkit.event.entity.*;
@@ -31,7 +28,7 @@ import cn.nukkit.event.player.PlayerInteractEvent;
 import cn.nukkit.event.player.PlayerInteractEvent.Action;
 import cn.nukkit.event.player.PlayerTeleportEvent;
 import cn.nukkit.item.Item;
-import cn.nukkit.item.ItemID;
+import cn.nukkit.item.ItemTotem;
 import cn.nukkit.item.enchantment.Enchantment;
 import cn.nukkit.level.*;
 import cn.nukkit.level.format.FullChunk;
@@ -54,12 +51,10 @@ import co.aikar.timings.TimingsHistory;
 import com.google.common.collect.Iterables;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntCollection;
-import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -131,10 +126,15 @@ public abstract class Entity extends Location implements Metadatable {
     @PowerNukkitOnly
     @Since("1.4.0.0-PN")
     public static final int DATA_USING_ITEM = dynamic(25); //byte
+
+    public static final int DATA_PLAYER_FLAG_SLEEP = 1;
+    public static final int DATA_PLAYER_FLAG_DEAD = 2;
     public static final int DATA_PLAYER_FLAGS = dynamic(26); //byte
     @Since("1.2.0.0-PN")
     public static final int DATA_PLAYER_INDEX = dynamic(27);
     public static final int DATA_PLAYER_BED_POSITION = dynamic(28); //block coords
+    public static final int DATA_PLAYER_BUTTON_TEXT = 40;
+
     public static final int DATA_FIREBALL_POWER_X = dynamic(29); //float
     public static final int DATA_FIREBALL_POWER_Y = dynamic(30); //float
     public static final int DATA_FIREBALL_POWER_Z = dynamic(31); //float
@@ -459,8 +459,15 @@ public abstract class Entity extends Location implements Metadatable {
     public static final int DATA_FLAG_HAS_DASH_COOLDOWN = dynamic(108);
     @Since("1.19.50-r1")
     public static final int DATA_FLAG_PUSH_TOWARDS_CLOSEST_SPACE = dynamic(109);
-    @Since("1.19.60-r1")
-    public static final int DATA_FLAG_LARGE = dynamic(110);
+    @Since("1.19.70-r1")
+    public static final int DATA_FLAG_SCENTING = dynamic(110);
+    @Since("1.19.70-r1")
+    public static final int DATA_FLAG_RISING = dynamic(111);
+    @Since("1.19.70-r1")
+    public static final int DATA_FLAG_FEELING_HAPPY = dynamic(112);
+    @Since("1.19.70-r1")
+    public static final int DATA_FLAG_SEARCHING = dynamic(113);
+
     private static final Set<CustomEntityDefinition> entityDefinitions = new HashSet<>();
     private static final Map<String, EntityProvider<? extends Entity>> knownEntities = new HashMap<>();
     private static final Map<String, String> shortNames = new HashMap<>();
@@ -561,10 +568,6 @@ public abstract class Entity extends Location implements Metadatable {
     protected Server server;
     protected Timing timing;
     protected boolean isPlayer = this instanceof Player;
-    @PowerNukkitXOnly
-    @Since("1.19.60-r1")
-    @Getter
-    protected EntityComponentGroup componentGroup;
     private int maxHealth = 20;
     private volatile boolean initialized;
 
@@ -865,19 +868,6 @@ public abstract class Entity extends Location implements Metadatable {
         return shortNames.get(entityProvider.getSimpleName());
     }
 
-
-    /**
-     * 获取该实体的标识符
-     * <p>
-     * Get the identifier of the entity
-     *
-     * @return the identifier
-     */
-    @Nullable
-    public Identifier getIdentifier() {
-        return Entity.getIdentifier(this.getNetworkId());
-    }
-
     /**
      * 获取指定网络id实体的标识符
      * <p>
@@ -972,6 +962,133 @@ public abstract class Entity extends Location implements Metadatable {
             if (entity.isPlayer) viewers.add((Player) entity);
         });
         playAnimationOnEntities(animation, entities, viewers);
+    }
+
+    @PowerNukkitXInternal
+    public static void init() {
+        registerEntity("Lightning", EntityLightning.class);
+        registerEntity("Arrow", EntityArrow.class);
+        registerEntity("EnderPearl", EntityEnderPearl.class);
+        registerEntity("FallingSand", EntityFallingBlock.class);
+        registerEntity("Firework", EntityFirework.class);
+        registerEntity("Item", EntityItem.class);
+        registerEntity("Painting", EntityPainting.class);
+        registerEntity("PrimedTnt", EntityPrimedTNT.class);
+        registerEntity("Snowball", EntitySnowball.class);
+        //Monsters
+        registerEntity("Blaze", EntityBlaze.class);
+        registerEntity("CaveSpider", EntityCaveSpider.class);
+        registerEntity("Creeper", EntityCreeper.class);
+        registerEntity("Drowned", EntityDrowned.class);
+        registerEntity("ElderGuardian", EntityElderGuardian.class);
+        registerEntity("EnderDragon", EntityEnderDragon.class);
+        registerEntity("Enderman", EntityEnderman.class);
+        registerEntity("Endermite", EntityEndermite.class);
+        registerEntity("Evoker", EntityEvoker.class);
+        registerEntity("Ghast", EntityGhast.class);
+        registerEntity("GlowSquid", EntityGlowSquid.class);
+        registerEntity("Guardian", EntityGuardian.class);
+        registerEntity("Hoglin", EntityHoglin.class);
+        registerEntity("Husk", EntityHusk.class);
+        registerEntity("MagmaCube", EntityMagmaCube.class);
+        registerEntity("Phantom", EntityPhantom.class);
+        registerEntity("Piglin", EntityPiglin.class);
+        registerEntity("PiglinBrute", EntityPiglinBrute.class);
+        registerEntity("Pillager", EntityPillager.class);
+        registerEntity("Ravager", EntityRavager.class);
+        registerEntity("Shulker", EntityShulker.class);
+        registerEntity("Silverfish", EntitySilverfish.class);
+        registerEntity("Skeleton", EntitySkeleton.class);
+        registerEntity("Slime", EntitySlime.class);
+        registerEntity("IronGolem", EntityIronGolem.class);
+        registerEntity("SnowGolem", EntitySnowGolem.class);
+        registerEntity("Spider", EntitySpider.class);
+        registerEntity("Stray", EntityStray.class);
+        registerEntity("Vex", EntityVex.class);
+        registerEntity("Vindicator", EntityVindicator.class);
+        registerEntity("Warden", EntityWarden.class);
+        registerEntity("Witch", EntityWitch.class);
+        registerEntity("Wither", EntityWither.class);
+        registerEntity("WitherSkeleton", EntityWitherSkeleton.class);
+        registerEntity("Zombie", EntityZombie.class);
+        registerEntity("Zoglin", EntityZoglin.class);
+        registerEntity("ZombiePigman", EntityZombiePigman.class);
+        registerEntity("ZombieVillager", EntityZombieVillager.class);
+        registerEntity("ZombieVillagerV1", EntityZombieVillagerV1.class);
+        //Passive
+        registerEntity("Allay", EntityAllay.class);
+        registerEntity("Axolotl", EntityAxolotl.class);
+        registerEntity("Bat", EntityBat.class);
+        registerEntity("Bee", EntityBee.class);
+        registerEntity("Cat", EntityCat.class);
+        registerEntity("Chicken", EntityChicken.class);
+        registerEntity("Cod", EntityCod.class);
+        registerEntity("Cow", EntityCow.class);
+        registerEntity("Dolphin", EntityDolphin.class);
+        registerEntity("Donkey", EntityDonkey.class);
+        registerEntity("Fox", EntityFox.class);
+        registerEntity("Frog", EntityFrog.class);
+        registerEntity("Goat", EntityGoat.class);
+        registerEntity("Horse", EntityHorse.class);
+        registerEntity("Llama", EntityLlama.class);
+        registerEntity("Mooshroom", EntityMooshroom.class);
+        registerEntity("Mule", EntityMule.class);
+        registerEntity("Ocelot", EntityOcelot.class);
+        registerEntity("Panda", EntityPanda.class);
+        registerEntity("Parrot", EntityParrot.class);
+        registerEntity("Pig", EntityPig.class);
+        registerEntity("PolarBear", EntityPolarBear.class);
+        registerEntity("Pufferfish", EntityPufferfish.class);
+        registerEntity("Rabbit", EntityRabbit.class);
+        registerEntity("Salmon", EntitySalmon.class);
+        registerEntity("Sheep", EntitySheep.class);
+        registerEntity("SkeletonHorse", EntitySkeletonHorse.class);
+        registerEntity("Squid", EntitySquid.class);
+        registerEntity("Strider", EntityStrider.class);
+        registerEntity("Tadpole", EntityTadpole.class);
+        registerEntity("TropicalFish", EntityTropicalFish.class);
+        registerEntity("Turtle", EntityTurtle.class);
+        registerEntity("Villager", EntityVillager.class);
+        registerEntity("VillagerV1", EntityVillagerV1.class);
+        registerEntity("WanderingTrader", EntityWanderingTrader.class);
+        registerEntity("Wolf", EntityWolf.class);
+        registerEntity("ZombieHorse", EntityZombieHorse.class);
+        registerEntity("NPC", EntityNPCEntity.class);
+        registerEntity("Camel", EntityCamel.class);
+        //Projectile
+        registerEntity("Small FireBall", EntitySmallFireBall.class);
+        registerEntity("AreaEffectCloud", EntityAreaEffectCloud.class);
+        registerEntity("Egg", EntityEgg.class);
+        registerEntity("LingeringPotion", EntityPotionLingering.class);
+        registerEntity("ThrownExpBottle", EntityExpBottle.class);
+        registerEntity("ThrownPotion", EntityPotion.class);
+        registerEntity("ThrownTrident", EntityThrownTrident.class);
+        registerEntity("XpOrb", EntityXPOrb.class);
+        registerEntity("ArmorStand", EntityArmorStand.class);
+
+        registerEntity("Human", EntityHuman.class, true);
+        //Vehicle
+        registerEntity("Boat", EntityBoat.class);
+        registerEntity("ChestBoat", EntityChestBoat.class);
+        registerEntity("MinecartChest", EntityMinecartChest.class);
+        registerEntity("MinecartHopper", EntityMinecartHopper.class);
+        registerEntity("MinecartRideable", EntityMinecartEmpty.class);
+        registerEntity("MinecartTnt", EntityMinecartTNT.class);
+
+        registerEntity("EndCrystal", EntityEndCrystal.class);
+        registerEntity("FishingHook", EntityFishingHook.class);
+    }
+
+    /**
+     * 获取该实体的标识符
+     * <p>
+     * Get the identifier of the entity
+     *
+     * @return the identifier
+     */
+    @Nullable
+    public Identifier getIdentifier() {
+        return Entity.getIdentifier(this.getNetworkId());
     }
 
     /**
@@ -1080,13 +1197,6 @@ public abstract class Entity extends Location implements Metadatable {
         this.dataProperties.putFloat(DATA_BOUNDING_BOX_WIDTH, this.getWidth());
         this.dataProperties.putInt(DATA_HEALTH, (int) this.getHealth());
 
-        try {
-            this.componentGroup = requireEntityComponentGroup();
-        } catch (InvocationTargetException | InstantiationException | IllegalAccessException e) {
-            throw new RuntimeException("An error occurred while creating the component group", e);
-        }
-        this.componentGroup.onInitEntity();
-
         this.scheduleUpdate();
     }
 
@@ -1172,6 +1282,7 @@ public abstract class Entity extends Location implements Metadatable {
             this.chunk.addEntity(this);
             this.level.addEntity(this);
 
+            //TODO: 此方法放在这里调用不合适
             this.initEntity();
 
             this.lastUpdate = this.server.getTick();
@@ -1529,8 +1640,6 @@ public abstract class Entity extends Location implements Metadatable {
         } else {
             this.namedTag.remove("ActiveEffects");
         }
-
-        this.getComponentGroup().onSaveNBT();
     }
 
     /**
@@ -1729,15 +1838,16 @@ public abstract class Entity extends Location implements Metadatable {
 
         //计算血量
         float newHealth = getHealth() - source.getFinalDamage();
-        if (newHealth < 1 && this instanceof Player) {
+
+        //only player
+        if (newHealth < 1 && this instanceof Player player) {
             if (source.getCause() != DamageCause.VOID && source.getCause() != DamageCause.SUICIDE) {
-                Player p = (Player) this;
                 boolean totem = false;
-                if (p.getOffhandInventory().getItem(0).getId() == ItemID.TOTEM) {
-                    p.getOffhandInventory().clear(0);
+                if (player.getOffhandInventory().getItem(0) instanceof ItemTotem) {
+                    player.getOffhandInventory().clear(0, true);
                     totem = true;
-                } else if (p.getInventory().getItemInHand().getId() == ItemID.TOTEM) {
-                    p.getInventory().clear(p.getInventory().getHeldItemIndex());
+                } else if (player.getInventory().getItemInHand() instanceof ItemTotem) {
+                    player.getInventory().clear(player.getInventory().getHeldItemIndex(), true);
                     totem = true;
                 }
                 //复活图腾实现
@@ -1756,7 +1866,7 @@ public abstract class Entity extends Location implements Metadatable {
                     EntityEventPacket pk = new EntityEventPacket();
                     pk.eid = this.getId();
                     pk.event = EntityEventPacket.CONSUME_TOTEM;
-                    p.dataPacket(pk);
+                    player.dataPacket(pk);
 
                     source.setCancelled(true);
                     return false;
@@ -2632,6 +2742,7 @@ public abstract class Entity extends Location implements Metadatable {
         return true;
     }
 
+    @NotNull
     public Position getPosition() {
         return new Position(this.x, this.y, this.z, this.level);
     }
@@ -3289,7 +3400,7 @@ public abstract class Entity extends Location implements Metadatable {
         Location from = this.getLocation();
         Location to = location;
         if (cause != null) {
-            EntityTeleportEvent ev = new EntityTeleportEvent(this, from, to);
+            EntityTeleportEvent ev = new EntityTeleportEvent(this, from, to, cause);
             this.server.getPluginManager().callEvent(ev);
             if (ev.isCancelled()) {
                 return false;
@@ -3728,32 +3839,6 @@ public abstract class Entity extends Location implements Metadatable {
         pk.eid = this.getId();
         pk.encode();
         Server.broadcastPacket(players, pk);
-    }
-
-    /**
-     * 通过反射获取类实现的接口并查询{@link cn.nukkit.entity.component.EntityComponentRegistery}创建对应组件
-     */
-    @PowerNukkitXOnly
-    @Since("1.19.60-r1")
-    protected EntityComponentGroup requireEntityComponentGroup() throws InvocationTargetException, InstantiationException, IllegalAccessException {
-        var components = new HashSet<EntityComponent>();
-
-        var interfaces = this.getClass().getInterfaces();
-        for (var interfaze : interfaces) {
-            var component = EntityComponentRegistery.getInterfaceBoundEntityComponent(interfaze);
-            if (component != null) {
-                var constructor = EntityComponent.CONSTRUCTOR_CACHE.computeIfAbsent(component, k -> {
-                    try {
-                        return component.getConstructor(Entity.class);
-                    } catch (NoSuchMethodException e) {
-                        throw new RuntimeException("The required entity component constructor was not found", e);
-                    }
-                });
-                components.add(constructor.newInstance(this));
-            }
-        }
-
-        return new SimpleEntityComponentGroup(components);
     }
 
     private record OldStringClass(String key, Class<? extends Entity> value) {

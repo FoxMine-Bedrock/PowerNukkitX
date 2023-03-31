@@ -70,24 +70,20 @@ public class BlockDragonEgg extends BlockFallable {
     @PowerNukkitOnly
     @Override
     public int onTouch(@Nullable Player player, Action action) {
-        switch (action) {
-            case RIGHT_CLICK_BLOCK:
-                break;
-            case LEFT_CLICK_BLOCK:
-                if (player != null && player.isCreative()) {
-                    return 0;
-                }
-                break;
-            default:
+        if (player != null && (action == Action.RIGHT_CLICK_BLOCK || action == Action.LEFT_CLICK_BLOCK)) {
+            if (player.isCreative() && action == Action.LEFT_CLICK_BLOCK) {
                 return 0;
+            }
+            onUpdate(Level.BLOCK_UPDATE_TOUCH);
+            return 1;
         }
-        return super.onTouch(player, action);
+        return 0;
     }
 
     public void teleport() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         for (int i = 0; i < 1000; ++i) {
-            Block to = this.getLevel().getBlock(this.add(random.nextInt(-16, 16), random.nextInt(-16, 16), random.nextInt(-16, 16)));
+            Block to = this.getLevel().getBlock(this.add(random.nextInt(-16, 16), random.nextInt(0, 16), random.nextInt(-16, 16)));
             if (to.getId() == AIR) {
                 BlockFromToEvent event = new BlockFromToEvent(this, to);
                 this.level.getServer().getPluginManager().callEvent(event);
@@ -119,7 +115,7 @@ public class BlockDragonEgg extends BlockFallable {
 
     @Override
     @PowerNukkitOnly
-    public  boolean sticksToPiston() {
+    public boolean sticksToPiston() {
         return false;
     }
 }

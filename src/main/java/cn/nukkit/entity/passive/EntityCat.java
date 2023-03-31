@@ -34,6 +34,7 @@ import cn.nukkit.level.particle.ItemBreakParticle;
 import cn.nukkit.math.Vector3;
 import cn.nukkit.nbt.tag.CompoundTag;
 import cn.nukkit.network.protocol.EntityEventPacket;
+import cn.nukkit.network.protocol.LevelSoundEventPacket;
 import cn.nukkit.utils.DyeColor;
 import cn.nukkit.utils.Utils;
 
@@ -144,7 +145,8 @@ public class EntityCat extends EntityAnimal implements EntityWalkable, EntityTam
                                 List.of(CoreMemoryTypes.NEAREST_SUITABLE_ATTACK_TARGET), this::attackTarget)
                 ),
                 Set.of(new WalkController(), new LookController(true, true), new FluctuateController()),
-                new SimpleFlatAStarRouteFinder(new WalkingPosEvaluator(), this)
+                new SimpleFlatAStarRouteFinder(new WalkingPosEvaluator(), this),
+                this
         );
     }
 
@@ -175,7 +177,10 @@ public class EntityCat extends EntityAnimal implements EntityWalkable, EntityTam
     public void initEntity() {
         this.setMaxHealth(10);
         super.initEntity();
-        this.getLevel().addSound(this, Sound.MOB_CAT_STRAYMEOW);
+        this.setDataProperty(new IntEntityData(Entity.DATA_AMBIENT_SOUND_EVENT_NAME, LevelSoundEventPacket.SOUND_AMBIENT));
+        if (this.isBaby()) {
+            this.setDataProperty(new IntEntityData(Entity.DATA_AMBIENT_SOUND_EVENT_NAME, LevelSoundEventPacket.SOUND_AMBIENT_BABY));
+        }
         if (this.namedTag.contains("CollarColor")) {
             var collarColor = DyeColor.getByDyeData(this.namedTag.getByte("CollarColor"));
             if (collarColor == null) {

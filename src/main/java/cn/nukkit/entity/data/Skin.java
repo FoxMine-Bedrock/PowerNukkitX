@@ -34,6 +34,7 @@ public class Skin {
     private final List<PersonaPiece> personaPieces = new ArrayList<>();
     private final List<PersonaPieceTint> tintColors = new ArrayList<>();
     private String skinId;
+    private String fullSkinId;
     @Since("1.4.0.0-PN")
     private String playFabId = "";
     private String skinResourcePatch = GEOMETRY_CUSTOM;
@@ -50,6 +51,7 @@ public class Skin {
     private String armSize = "wide";
     private boolean trusted = true;
     private String geometryDataEngineVersion = "";
+    private boolean overridingPlayerAppearance = true;
 
     private static SerializedImage parseBufferedImage(BufferedImage image) {
         FastByteArrayOutputStream outputStream = new FastByteArrayOutputStream();
@@ -82,6 +84,7 @@ public class Skin {
                 (capeId == null || capeId.length() < 100) &&
                 (skinColor == null || skinColor.length() < 100) &&
                 (armSize == null || armSize.length() < 100) &&
+                (fullSkinId == null || fullSkinId.length() < 200) &&
                 (geometryDataEngineVersion == null || geometryDataEngineVersion.length() < 100);
     }
 
@@ -305,7 +308,12 @@ public class Skin {
     }
 
     public String getFullSkinId() {
-        return this.skinId + (this.capeId != null ? this.capeId : "");
+        if (fullSkinId == null) fullSkinId = skinId + (capeId != null ? capeId : "");
+        return fullSkinId;
+    }
+
+    public void setFullSkinId(String fullSkinId) {
+        this.fullSkinId = fullSkinId;
     }
 
     @Since("1.4.0.0-PN")
@@ -323,5 +331,13 @@ public class Skin {
     @Since("1.4.0.0-PN")
     public void setPlayFabId(String playFabId) {
         this.playFabId = playFabId;
+    }
+
+    public boolean isOverridingPlayerAppearance() {
+        return this.overridingPlayerAppearance;
+    }
+
+    public void setOverridingPlayerAppearance(boolean override) {
+        this.overridingPlayerAppearance = override;
     }
 }

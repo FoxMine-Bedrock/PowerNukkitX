@@ -12,6 +12,7 @@ import cn.nukkit.block.customblock.CustomBlock;
 import cn.nukkit.blockproperty.*;
 import cn.nukkit.blockproperty.exception.BlockPropertyNotFoundException;
 import cn.nukkit.blockstate.exception.InvalidBlockStateException;
+import cn.nukkit.item.RuntimeItems;
 import cn.nukkit.nbt.NBTIO;
 import cn.nukkit.nbt.tag.CompoundTag;
 import cn.nukkit.nbt.tag.LinkedCompoundTag;
@@ -21,9 +22,12 @@ import cn.nukkit.utils.HumanStringComparator;
 import cn.nukkit.utils.MinecraftNamespaceComparator;
 import cn.nukkit.utils.OK;
 import com.google.common.base.Preconditions;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.experimental.UtilityClass;
@@ -66,9 +70,31 @@ public class BlockStateRegistry {
 
     private List<String> knownStateIds;
 
+    @PowerNukkitXOnly
+    private final Int2ObjectOpenHashMap<String> mappingEntries = new Int2ObjectOpenHashMap<>();
+
     //<editor-fold desc="static initialization" defaultstate="collapsed">
     static {
         init();
+
+        try (InputStream stream = Server.class.getClassLoader().getResourceAsStream("block_mappings.json")) {
+            if (stream == null) {
+                throw new AssertionError("Unable to load item_mappings.json");
+            }
+            JsonObject itemMapping = JsonParser.parseReader(new InputStreamReader(stream)).getAsJsonObject();
+            for (String legacyID : itemMapping.keySet()) {
+                JsonObject convertData = itemMapping.getAsJsonObject(legacyID);
+                int id = Integer.parseInt(legacyID);
+                for (String damageStr : convertData.keySet()) {
+                    String identifier = convertData.get(damageStr).getAsString();
+                    int damage = Integer.parseInt(damageStr);
+                    mappingEntries.put(RuntimeItems.getFullId(id, damage), identifier);
+                }
+            }
+            mappingEntries.trim();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
     //</editor-fold>
 
@@ -152,14 +178,16 @@ public class BlockStateRegistry {
                 registerStateId(state, runtimeId);
             }
         }
-
         //update block_ids.csv
-        /*for (var block : warned) {
-            var id = 255-RuntimeItems.getRuntimeMapping().getNetworkIdByNamespaceId(block).getAsInt();
+        /*TreeMap<Integer, String> ids = new TreeMap<>(Integer::compare);
+        for (var block : warned) {
+            ids.put(255 - RuntimeItems.getRuntimeMapping().getNetworkIdByNamespaceId(block).getAsInt(), block);
+        }
+        for (var entry : ids.entrySet()) {
             try {
-                var path = Path.of("test.txt");
+                var path = Path.of("block_ids.txt");
                 if (!path.toFile().exists()) path.toFile().createNewFile();
-                Files.writeString(path, id + "," + block + "\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+                Files.writeString(path, entry.getKey() + "," + entry.getValue() + "\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -176,6 +204,12 @@ public class BlockStateRegistry {
         } catch (IOException e) {
             throw new ExceptionInInitializerError(e);
         }
+    }
+
+    @Nullable
+    @PowerNukkitXOnly
+    public static String getBlockMapping(int blockLegacyFullId) {
+        return mappingEntries.get(blockLegacyFullId);
     }
 
     private boolean isNameOwnerOfId(String name, int blockId) {
@@ -401,7 +435,6 @@ public class BlockStateRegistry {
         } catch (Exception e) {
             log.fatal("An error has occurred while trying to parse the legacyStateId of {}:{}", state.getBlockId(), state.getDataStorage(), e);
         }
-
         return logDiscoveryError(state);
     }
 
@@ -792,5 +825,11 @@ public class BlockStateRegistry {
 
         @Nullable
         private CompoundTag originalBlock;
+    }
+
+    @Data
+    public static class MappingEntry {
+        private final int legacyName;
+        private final int damage;
     }
 }

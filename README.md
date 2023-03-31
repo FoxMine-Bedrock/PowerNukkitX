@@ -24,7 +24,7 @@ Join US:
 
 What's new in PowerNukkitX? Let's See：
 
-1. Support for 1.19.60 protocol.
+1. Support for 1.19.70 protocol.
 2. Support for 384 world height.
 3. Support for The Nether world, no need to install additional plugin.
 4. Support 3D biomes.<!--Custom dimension interface TODO-->
@@ -102,7 +102,7 @@ https://hub.docker.com/r/coolloong/powernukkitx
 <!-- Just Do it :-D -->
 <!--使用DeepL暴力翻译-->
 **PowerNukkitX** is a modified and optimized version based on PowerNukkit and Nukkit, fixing its bugs, adding more
-feature support,such as [LiteLoader](https://github.com/PowerNukkitX/LiteLoader-Libs) (WIP) plugin
+feature support, such as [LiteLoader](https://github.com/PowerNukkitX/LiteLoader-Libs) (WIP) plugin
 compatibility.
 
 * Please note that **PowerNukkitX** is not maintained by Cloudburst developers, it relies on the open source community
@@ -146,7 +146,7 @@ repositories {
 }
 
 dependencies {
-    compile group: 'cn.powernukkitx', name: 'powernukkitx', version: '1.19.60-r1'
+    compile group: 'cn.powernukkitx', name: 'powernukkitx', version: '1.19.63-r1'
 }
 ```
 
@@ -156,7 +156,7 @@ dependencies {
     <dependency>
         <groupId>cn.powernukkitx</groupId>
         <artifactId>powernukkitx</artifactId>
-        <version>1.19.60-r1</version>
+        <version>1.19.70-r1</version>
     </dependency>
 </dependencies>
 ```

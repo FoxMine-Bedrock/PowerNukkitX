@@ -5,7 +5,7 @@ import cn.nukkit.api.PowerNukkitOnly;
 import cn.nukkit.api.PowerNukkitXOnly;
 import cn.nukkit.api.Since;
 import cn.nukkit.block.Block;
-import cn.nukkit.blockentity.*;
+import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockstate.BlockStateRegistry;
 import cn.nukkit.command.*;
 import cn.nukkit.command.function.FunctionManager;
@@ -13,13 +13,7 @@ import cn.nukkit.console.NukkitConsole;
 import cn.nukkit.dispenser.DispenseBehaviorRegister;
 import cn.nukkit.entity.Attribute;
 import cn.nukkit.entity.Entity;
-import cn.nukkit.entity.EntityHuman;
 import cn.nukkit.entity.data.Skin;
-import cn.nukkit.entity.item.*;
-import cn.nukkit.entity.mob.*;
-import cn.nukkit.entity.passive.*;
-import cn.nukkit.entity.projectile.*;
-import cn.nukkit.entity.weather.EntityLightning;
 import cn.nukkit.event.HandlerList;
 import cn.nukkit.event.level.LevelInitEvent;
 import cn.nukkit.event.level.LevelLoadEvent;
@@ -37,6 +31,7 @@ import cn.nukkit.level.biome.EnumBiome;
 import cn.nukkit.level.format.LevelProvider;
 import cn.nukkit.level.format.LevelProviderManager;
 import cn.nukkit.level.format.anvil.Anvil;
+import cn.nukkit.level.format.generic.BaseRegionLoader;
 import cn.nukkit.level.generator.*;
 import cn.nukkit.level.terra.PNXPlatform;
 import cn.nukkit.level.tickingarea.manager.SimpleTickingAreaManager;
@@ -75,6 +70,8 @@ import cn.nukkit.positiontracking.PositionTrackingService;
 import cn.nukkit.potion.Effect;
 import cn.nukkit.potion.Potion;
 import cn.nukkit.resourcepacks.ResourcePackManager;
+import cn.nukkit.resourcepacks.loader.JarPluginResourcePackLoader;
+import cn.nukkit.resourcepacks.loader.ZippedResourcePackLoader;
 import cn.nukkit.scheduler.ServerScheduler;
 import cn.nukkit.scheduler.Task;
 import cn.nukkit.scoreboard.manager.IScoreboardManager;
@@ -98,14 +95,18 @@ import org.iq80.leveldb.DB;
 import org.iq80.leveldb.Options;
 import org.iq80.leveldb.impl.Iq80DBFactory;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -621,7 +622,7 @@ public class Server {
                 put("sub-motd", "https://powernukkitx.cn");
                 put("server-port", 19132);
                 put("server-ip", "0.0.0.0");
-                put("view-distance", 10);
+                put("view-distance", 12);
                 put("white-list", false);
                 put("achievements", true);
                 put("announce-player-achievements", true);
@@ -675,14 +676,16 @@ public class Server {
         var langName = this.getConfig("settings.language", BaseLang.FALLBACK_LANGUAGE);
         this.baseLang = new BaseLang(langName);
         this.baseLangCode = mapInternalLang(langName);
+
+        var isShaded = StartArgUtils.isShaded();
         // 检测启动参数
-        if (!StartArgUtils.isValidStart()) {
+        if (!StartArgUtils.isValidStart() || (JarStart.isUsingJavaJar() && !isShaded)) {
             log.fatal(getLanguage().tr("nukkit.start.invalid"));
             return;
         }
 
         // 检测非法使用shaded包启动
-        if (!this.properties.getBoolean("allow-shaded", false) && StartArgUtils.isShaded()) {
+        if (!this.properties.getBoolean("allow-shaded", false) && isShaded) {
             log.fatal(getLanguage().tr("nukkit.start.shaded1"));
             log.fatal(getLanguage().tr("nukkit.start.shaded2"));
             log.fatal(getLanguage().tr("nukkit.start.shaded3"));
@@ -788,7 +791,7 @@ public class Server {
 
         Block.init();
         Enchantment.init();
-        RuntimeItems.getRuntimeMapping();
+        RuntimeItems.init();
         Potion.init();
         Item.init();
         EnumBiome.values(); //load class, this also registers biomes
@@ -826,7 +829,10 @@ public class Server {
         convertLegacyPlayerData();
 
         this.craftingManager = new CraftingManager();
-        this.resourcePackManager = new ResourcePackManager(new File(Nukkit.DATA_PATH, "resource_packs"));
+        this.resourcePackManager = new ResourcePackManager(
+                new ZippedResourcePackLoader(new File(Nukkit.DATA_PATH, "resource_packs")),
+                new JarPluginResourcePackLoader(new File(this.pluginPath))
+        );
 
         this.commandMap = new SimpleCommandMap(this);
         this.pluginManager = new PluginManager(this, this.commandMap);
@@ -1194,7 +1200,7 @@ public class Server {
      *
      * @param sender      命令执行者
      * @param commandLine 一行命令
-     * @return boolean 执行是否成功
+     * @return 返回0代表执行失败, 返回大于等于1代表执行成功<br>Returns 0 for failed execution, greater than or equal to 1 for successful execution
      * @throws ServerException 服务器异常
      */
     public int executeCommand(CommandSender sender, String commandLine) throws ServerException {
@@ -1217,7 +1223,54 @@ public class Server {
     }
 
     /**
+     * 以该控制台身份静音执行这些命令，无视权限
+     * <p>
+     * Execute these commands silently as the console, ignoring permissions.
+     *
+     * @param commands the commands
+     * @throws ServerException 服务器异常
+     */
+    public void silentExecuteCommand(String... commands) {
+        this.silentExecuteCommand(null, commands);
+    }
+
+    /**
+     * 以该玩家身份静音执行这些命令无视权限
+     * <p>
+     * Execute these commands silently as this player, ignoring permissions.
+     *
+     * @param sender   命令执行者<br>command sender
+     * @param commands the commands
+     * @throws ServerException 服务器异常
+     */
+    public void silentExecuteCommand(@Nullable Player sender, String... commands) {
+        final var revert = new ArrayList<Level>();
+        final var server = Server.getInstance();
+        for (var level : server.getLevels().values()) {
+            if (level.getGameRules().getBoolean(GameRule.SEND_COMMAND_FEEDBACK)) {
+                level.getGameRules().setGameRule(GameRule.SEND_COMMAND_FEEDBACK, false);
+                revert.add(level);
+            }
+        }
+        if (sender == null) {
+            for (var cmd : commands) {
+                server.executeCommand(server.getConsoleSender(), cmd);
+            }
+        } else {
+            for (var cmd : commands) {
+                server.executeCommand(server.getConsoleSender(), "execute as " + "\"" + sender.getName() + "\" run " + cmd);
+            }
+        }
+
+        for (var level : revert) {
+            level.getGameRules().setGameRule(GameRule.SEND_COMMAND_FEEDBACK, true);
+        }
+    }
+
+    /**
      * 得到控制台发送者
+     * <p>
+     * Get the console sender
      *
      * @return {@link ConsoleCommandSender}
      */
@@ -2832,10 +2885,49 @@ public class Server {
 
         level.initLevel();
 
+        //convert old Nukkit World
+        if (level.getProvider() instanceof Anvil anvil && anvil.isOldAnvil() && level.isOverWorld()) {
+            log.info(Server.getInstance().getLanguage().tr("nukkit.anvil.converter.update"));
+            var scan = new Scanner(System.in);
+            var result = scan.next();
+            if (result.equalsIgnoreCase("true") || result.equalsIgnoreCase("t")) {
+                File file = new File(Path.of(path).resolve("region").toUri());
+                if (file.exists()) {
+                    var regions = file.listFiles();
+                    if (regions != null) {
+                        var bid = Server.getInstance().addBusying(System.currentTimeMillis());
+                        final Method loadRegion;
+                        try {
+                            loadRegion = Anvil.class.getDeclaredMethod("loadRegion", int.class, int.class);
+                            loadRegion.setAccessible(true);
+                        } catch (NoSuchMethodException e) {
+                            throw new RuntimeException(e);
+                        }
+                        var allTask = new ArrayList<CompletableFuture<?>>();
+                        for (var region : regions) {
+                            allTask.add(CompletableFuture.runAsync(() -> {
+                                var regionPos = region.getName().split("\\.");
+                                var regionX = Integer.parseInt(regionPos[1]);
+                                var regionZ = Integer.parseInt(regionPos[2]);
+                                BaseRegionLoader loader;
+                                try {
+                                    loader = (BaseRegionLoader) loadRegion.invoke(anvil, regionX, regionZ);
+                                } catch (IllegalAccessException | InvocationTargetException e) {
+                                    throw new RuntimeException(e);
+                                }
+                                OldNukkitLevelConvert.convertToPNXWorld(anvil, loader);
+                            }, this.computeThreadPool));
+                        }
+                        CompletableFuture.allOf(allTask.toArray(new CompletableFuture<?>[]{})).join();
+                        Server.getInstance().removeBusying(bid);
+                        loadRegion.setAccessible(false);
+                    }
+                }
+            } else System.exit(0);
+        }
+
         this.getPluginManager().callEvent(new LevelLoadEvent(level));
-
         level.setTickRate(this.baseTickRate);
-
         return true;
     }
 
@@ -3188,183 +3280,14 @@ public class Server {
         return this.getConfig("player.skin-change-cooldown", 30);
     }
 
-    /**
-     * Checks the current thread against the expected primary thread for the
-     * server.
-     * <p>
-     * <b>Note:</b> this method should not be used to indicate the current
-     * synchronized state of the runtime. A current thread matching the main
-     * thread indicates that it is synchronized, but a mismatch does not
-     * preclude the same assumption.
-     *
-     * @return true if the current thread matches the expected primary thread,
-     * false otherwise
-     */
-    public final boolean isPrimaryThread() {
-        return (Thread.currentThread() == currentThread);
-    }
-
-    public Thread getPrimaryThread() {
-        return currentThread;
-    }
-
+    // TODO: update PNX Junit5 test framework to remove dependency on this method
     private void registerEntities() {
-        Entity.registerEntity("Lightning", EntityLightning.class);
-        Entity.registerEntity("Arrow", EntityArrow.class);
-        Entity.registerEntity("EnderPearl", EntityEnderPearl.class);
-        Entity.registerEntity("FallingSand", EntityFallingBlock.class);
-        Entity.registerEntity("Firework", EntityFirework.class);
-        Entity.registerEntity("Item", EntityItem.class);
-        Entity.registerEntity("Painting", EntityPainting.class);
-        Entity.registerEntity("PrimedTnt", EntityPrimedTNT.class);
-        Entity.registerEntity("Snowball", EntitySnowball.class);
-        //Monsters
-        Entity.registerEntity("Blaze", EntityBlaze.class);
-        Entity.registerEntity("CaveSpider", EntityCaveSpider.class);
-        Entity.registerEntity("Creeper", EntityCreeper.class);
-        Entity.registerEntity("Drowned", EntityDrowned.class);
-        Entity.registerEntity("ElderGuardian", EntityElderGuardian.class);
-        Entity.registerEntity("EnderDragon", EntityEnderDragon.class);
-        Entity.registerEntity("Enderman", EntityEnderman.class);
-        Entity.registerEntity("Endermite", EntityEndermite.class);
-        Entity.registerEntity("Evoker", EntityEvoker.class);
-        Entity.registerEntity("Ghast", EntityGhast.class);
-        Entity.registerEntity("GlowSquid", EntityGlowSquid.class);
-        Entity.registerEntity("Guardian", EntityGuardian.class);
-        Entity.registerEntity("Hoglin", EntityHoglin.class);
-        Entity.registerEntity("Husk", EntityHusk.class);
-        Entity.registerEntity("MagmaCube", EntityMagmaCube.class);
-        Entity.registerEntity("Phantom", EntityPhantom.class);
-        Entity.registerEntity("Piglin", EntityPiglin.class);
-        Entity.registerEntity("PiglinBrute", EntityPiglinBrute.class);
-        Entity.registerEntity("Pillager", EntityPillager.class);
-        Entity.registerEntity("Ravager", EntityRavager.class);
-        Entity.registerEntity("Shulker", EntityShulker.class);
-        Entity.registerEntity("Silverfish", EntitySilverfish.class);
-        Entity.registerEntity("Skeleton", EntitySkeleton.class);
-        Entity.registerEntity("Slime", EntitySlime.class);
-        Entity.registerEntity("IronGolem", EntityIronGolem.class);
-        Entity.registerEntity("SnowGolem", EntitySnowGolem.class);
-        Entity.registerEntity("Spider", EntitySpider.class);
-        Entity.registerEntity("Stray", EntityStray.class);
-        Entity.registerEntity("Vex", EntityVex.class);
-        Entity.registerEntity("Vindicator", EntityVindicator.class);
-        Entity.registerEntity("Warden", EntityWarden.class);
-        Entity.registerEntity("Witch", EntityWitch.class);
-        Entity.registerEntity("Wither", EntityWither.class);
-        Entity.registerEntity("WitherSkeleton", EntityWitherSkeleton.class);
-        Entity.registerEntity("Zombie", EntityZombie.class);
-        Entity.registerEntity("Zoglin", EntityZoglin.class);
-        Entity.registerEntity("ZombiePigman", EntityZombiePigman.class);
-        Entity.registerEntity("ZombieVillager", EntityZombieVillager.class);
-        Entity.registerEntity("ZombieVillagerV1", EntityZombieVillagerV1.class);
-        //Passive
-        Entity.registerEntity("Allay", EntityAllay.class);
-        Entity.registerEntity("Axolotl", EntityAxolotl.class);
-        Entity.registerEntity("Bat", EntityBat.class);
-        Entity.registerEntity("Bee", EntityBee.class);
-        Entity.registerEntity("Cat", EntityCat.class);
-        Entity.registerEntity("Chicken", EntityChicken.class);
-        Entity.registerEntity("Cod", EntityCod.class);
-        Entity.registerEntity("Cow", EntityCow.class);
-        Entity.registerEntity("Dolphin", EntityDolphin.class);
-        Entity.registerEntity("Donkey", EntityDonkey.class);
-        Entity.registerEntity("Fox", EntityFox.class);
-        Entity.registerEntity("Frog", EntityFrog.class);
-        Entity.registerEntity("Goat", EntityGoat.class);
-        Entity.registerEntity("Horse", EntityHorse.class);
-        Entity.registerEntity("Llama", EntityLlama.class);
-        Entity.registerEntity("Mooshroom", EntityMooshroom.class);
-        Entity.registerEntity("Mule", EntityMule.class);
-        Entity.registerEntity("Ocelot", EntityOcelot.class);
-        Entity.registerEntity("Panda", EntityPanda.class);
-        Entity.registerEntity("Parrot", EntityParrot.class);
-        Entity.registerEntity("Pig", EntityPig.class);
-        Entity.registerEntity("PolarBear", EntityPolarBear.class);
-        Entity.registerEntity("Pufferfish", EntityPufferfish.class);
-        Entity.registerEntity("Rabbit", EntityRabbit.class);
-        Entity.registerEntity("Salmon", EntitySalmon.class);
-        Entity.registerEntity("Sheep", EntitySheep.class);
-        Entity.registerEntity("SkeletonHorse", EntitySkeletonHorse.class);
-        Entity.registerEntity("Squid", EntitySquid.class);
-        Entity.registerEntity("Strider", EntityStrider.class);
-        Entity.registerEntity("Tadpole", EntityTadpole.class);
-        Entity.registerEntity("TropicalFish", EntityTropicalFish.class);
-        Entity.registerEntity("Turtle", EntityTurtle.class);
-        Entity.registerEntity("Villager", EntityVillager.class);
-        Entity.registerEntity("VillagerV1", EntityVillagerV1.class);
-        Entity.registerEntity("WanderingTrader", EntityWanderingTrader.class);
-        Entity.registerEntity("Wolf", EntityWolf.class);
-        Entity.registerEntity("ZombieHorse", EntityZombieHorse.class);
-        Entity.registerEntity("NPC", EntityNPCEntity.class);
-        //Projectile
-        Entity.registerEntity("Small FireBall", EntitySmallFireBall.class);
-        Entity.registerEntity("AreaEffectCloud", EntityAreaEffectCloud.class);
-        Entity.registerEntity("Egg", EntityEgg.class);
-        Entity.registerEntity("LingeringPotion", EntityPotionLingering.class);
-        Entity.registerEntity("ThrownExpBottle", EntityExpBottle.class);
-        Entity.registerEntity("ThrownPotion", EntityPotion.class);
-        Entity.registerEntity("ThrownTrident", EntityThrownTrident.class);
-        Entity.registerEntity("XpOrb", EntityXPOrb.class);
-        Entity.registerEntity("ArmorStand", EntityArmorStand.class);
-
-        Entity.registerEntity("Human", EntityHuman.class, true);
-        //Vehicle
-        Entity.registerEntity("Boat", EntityBoat.class);
-        Entity.registerEntity("ChestBoat", EntityChestBoat.class);
-        Entity.registerEntity("MinecartChest", EntityMinecartChest.class);
-        Entity.registerEntity("MinecartHopper", EntityMinecartHopper.class);
-        Entity.registerEntity("MinecartRideable", EntityMinecartEmpty.class);
-        Entity.registerEntity("MinecartTnt", EntityMinecartTNT.class);
-
-        Entity.registerEntity("EndCrystal", EntityEndCrystal.class);
-        Entity.registerEntity("FishingHook", EntityFishingHook.class);
+        Entity.init();
     }
 
+    // TODO: update PNX Junit5 test framework to remove dependency on this method
     private void registerBlockEntities() {
-        BlockEntity.registerBlockEntity(BlockEntity.FURNACE, BlockEntityFurnace.class);
-        BlockEntity.registerBlockEntity(BlockEntity.CHEST, BlockEntityChest.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SIGN, BlockEntitySign.class);
-        BlockEntity.registerBlockEntity(BlockEntity.ENCHANT_TABLE, BlockEntityEnchantTable.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SKULL, BlockEntitySkull.class);
-        BlockEntity.registerBlockEntity(BlockEntity.FLOWER_POT, BlockEntityFlowerPot.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BREWING_STAND, BlockEntityBrewingStand.class);
-        BlockEntity.registerBlockEntity(BlockEntity.ITEM_FRAME, BlockEntityItemFrame.class);
-        BlockEntity.registerBlockEntity(BlockEntity.CAULDRON, BlockEntityCauldron.class);
-        BlockEntity.registerBlockEntity(BlockEntity.ENDER_CHEST, BlockEntityEnderChest.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BEACON, BlockEntityBeacon.class);
-        BlockEntity.registerBlockEntity(BlockEntity.PISTON_ARM, BlockEntityPistonArm.class);
-        BlockEntity.registerBlockEntity(BlockEntity.COMPARATOR, BlockEntityComparator.class);
-        BlockEntity.registerBlockEntity(BlockEntity.HOPPER, BlockEntityHopper.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BED, BlockEntityBed.class);
-        BlockEntity.registerBlockEntity(BlockEntity.JUKEBOX, BlockEntityJukebox.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SHULKER_BOX, BlockEntityShulkerBox.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BANNER, BlockEntityBanner.class);
-        BlockEntity.registerBlockEntity(BlockEntity.MUSIC, BlockEntityMusic.class);
-        BlockEntity.registerBlockEntity(BlockEntity.LECTERN, BlockEntityLectern.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BLAST_FURNACE, BlockEntityBlastFurnace.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SMOKER, BlockEntitySmoker.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BEEHIVE, BlockEntityBeehive.class);
-        BlockEntity.registerBlockEntity(BlockEntity.CONDUIT, BlockEntityConduit.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BARREL, BlockEntityBarrel.class);
-        BlockEntity.registerBlockEntity(BlockEntity.CAMPFIRE, BlockEntityCampfire.class);
-        BlockEntity.registerBlockEntity(BlockEntity.BELL, BlockEntityBell.class);
-        BlockEntity.registerBlockEntity(BlockEntity.DAYLIGHT_DETECTOR, BlockEntityDaylightDetector.class);
-        BlockEntity.registerBlockEntity(BlockEntity.DISPENSER, BlockEntityDispenser.class);
-        BlockEntity.registerBlockEntity(BlockEntity.DROPPER, BlockEntityDropper.class);
-        BlockEntity.registerBlockEntity(BlockEntity.MOVING_BLOCK, BlockEntityMovingBlock.class);
-        BlockEntity.registerBlockEntity(BlockEntity.NETHER_REACTOR, BlockEntityNetherReactor.class);
-        BlockEntity.registerBlockEntity(BlockEntity.LODESTONE, BlockEntityLodestone.class);
-        BlockEntity.registerBlockEntity(BlockEntity.TARGET, BlockEntityTarget.class);
-        BlockEntity.registerBlockEntity(BlockEntity.END_PORTAL, BlockEntityEndPortal.class);
-        BlockEntity.registerBlockEntity(BlockEntity.END_GATEWAY, BlockEntityEndGateway.class);
-        //powernukkitx only
-        BlockEntity.registerBlockEntity(BlockEntity.COMMAND_BLOCK, BlockEntityCommandBlock.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SCULK_SENSOR, BlockEntitySculkSensor.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SCULK_CATALYST, BlockEntitySculkCatalyst.class);
-        BlockEntity.registerBlockEntity(BlockEntity.SCULK_SHRIEKER, BlockEntitySculkShrieker.class);
-        BlockEntity.registerBlockEntity(BlockEntity.STRUCTURE_BLOCK, BlockEntityStructBlock.class);
-        BlockEntity.registerBlockEntity(BlockEntity.GLOW_ITEM_FRAME, BlockEntityGlowItemFrame.class);
+        BlockEntity.init();
     }
 
     public boolean isNetherAllowed() {
@@ -3455,6 +3378,28 @@ public class Server {
         return serverAuthoritativeMovementMode;
     }
 
+    // region threading - 并发基础设施
+
+    /**
+     * Checks the current thread against the expected primary thread for the
+     * server.
+     * <p>
+     * <b>Note:</b> this method should not be used to indicate the current
+     * synchronized state of the runtime. A current thread matching the main
+     * thread indicates that it is synchronized, but a mismatch does not
+     * preclude the same assumption.
+     *
+     * @return true if the current thread matches the expected primary thread,
+     * false otherwise
+     */
+    public final boolean isPrimaryThread() {
+        return (Thread.currentThread() == currentThread);
+    }
+
+    public Thread getPrimaryThread() {
+        return currentThread;
+    }
+
     //todo NukkitConsole 会阻塞关不掉
     private class ConsoleThread extends Thread implements InterruptibleThread {
         public ConsoleThread() {
@@ -3500,4 +3445,7 @@ public class Server {
             return AccessController.doPrivileged((PrivilegedAction<ForkJoinWorkerThread>) () -> new ComputeThread(pool, threadCount), ACC);
         }
     }
+
+    // endregion
+
 }

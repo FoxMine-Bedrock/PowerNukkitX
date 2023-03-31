@@ -8,11 +8,9 @@ import cn.nukkit.block.BlockID;
 import cn.nukkit.block.BlockItemFrame;
 import cn.nukkit.entity.item.EntityItem;
 import cn.nukkit.event.block.ItemFrameDropItemEvent;
-import cn.nukkit.event.player.PlayerUseItemFrameEvent;
 import cn.nukkit.item.Item;
 import cn.nukkit.item.ItemBlock;
 import cn.nukkit.item.MinecraftItemID;
-import cn.nukkit.item.RuntimeItems;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.format.FullChunk;
 import cn.nukkit.nbt.NBTIO;
@@ -81,9 +79,7 @@ public class BlockEntityItemFrame extends BlockEntitySpawnable {
         this.namedTag.putCompound("Item", NBTIO.putItemHelper(item));
         if (setChanged) {
             this.setDirty();
-        }
-
-        this.level.updateComparatorOutputLevel(this);
+        } else this.level.updateComparatorOutputLevel(this);
     }
 
     public float getItemDropChance() {
@@ -114,11 +110,8 @@ public class BlockEntityItemFrame extends BlockEntitySpawnable {
 
         if (!item.isNull()) {
             CompoundTag itemTag = NBTIO.putItemHelper(item);
-            int networkFullId = item.getNetworkFullId();
-            int networkDamage = (networkFullId & 0x1) == 0x1 ? 0 : item.getDamage();
-            String namespacedId = RuntimeItems.getRuntimeMapping().getNamespacedIdByNetworkId(
-                    RuntimeItems.getNetworkId(networkFullId)
-            );
+            int networkDamage = item.getDamage();
+            String namespacedId = item.getNamespaceId();
             if (namespacedId != null) {
                 itemTag.remove("id");
                 itemTag.putShort("Damage", networkDamage);
@@ -164,11 +157,9 @@ public class BlockEntityItemFrame extends BlockEntitySpawnable {
             return null;
         }
 
-        PlayerUseItemFrameEvent event1 = new PlayerUseItemFrameEvent(player, getLevelBlock(), this, drop, PlayerUseItemFrameEvent.Action.DROP);
-        ItemFrameDropItemEvent event2 = new ItemFrameDropItemEvent(player, getLevelBlock(), this, drop);
-        level.getServer().getPluginManager().callEvent(event1);
-        level.getServer().getPluginManager().callEvent(event2);
-        if (event1.isCancelled() || event2.isCancelled()) {
+        ItemFrameDropItemEvent event = new ItemFrameDropItemEvent(player, getLevelBlock(), this, drop);
+        level.getServer().getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
             if (player != null) {
                 spawnTo(player);
             }

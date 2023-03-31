@@ -8,7 +8,9 @@ import cn.nukkit.api.Since;
 import cn.nukkit.block.Block;
 import cn.nukkit.block.BlockUnknown;
 import cn.nukkit.blockstate.BlockState;
+import cn.nukkit.blockstate.BlockStateRegistry;
 import cn.nukkit.blockstate.exception.InvalidBlockStateException;
+import cn.nukkit.item.RuntimeItems;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.format.ChunkSection3DBiome;
 import cn.nukkit.level.format.LevelProvider;
@@ -26,8 +28,6 @@ import cn.nukkit.utils.*;
 import it.unimi.dsi.fastutil.ints.*;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
-import org.jetbrains.annotations.NotNull;
-
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
@@ -292,7 +292,15 @@ public class ChunkSection implements cn.nukkit.level.format.ChunkSection, ChunkS
                     }
                     int composedData = composeData(data.get(index), dataExtra.get(index));
                     BlockState state = loadState(index, blockId, composedData, hugeDataList, hugeDataSize);
-                    storage.setBlockState(bx, by, bz, state);
+
+                    //TODO 更新旧羊毛状态到新羊毛状态 下个版本移除
+                    String blockMapping = BlockStateRegistry.getBlockMapping(RuntimeItems.getFullId(state.getBlockId(), state.getDataStorage().intValue()));
+                    if (blockMapping != null) {
+                        int id = RuntimeItems.getRuntimeMapping().getNetworkIdByNamespaceId(blockMapping).orElse(0);
+                        storage.setBlockState(bx, by, bz, Block.get(id).getCurrentState());
+                    } else {
+                        storage.setBlockState(bx, by, bz, state);
+                    }
                 }
             }
         }

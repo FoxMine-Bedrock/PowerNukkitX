@@ -65,11 +65,9 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
     public static final Block[] EMPTY_ARRAY = new Block[0];
 
     //<editor-fold desc="static fields" defaultstate="collapsed">
-    @SuppressWarnings("DeprecatedIsStillUsed")
-    @Deprecated
     @DeprecationDetails(since = "1.4.0.0-PN", reason = "It is being replaced by an other solution that don't require a fixed size")
     @PowerNukkitOnly
-    public static final int MAX_BLOCK_ID = dynamic(800);
+    public static final int MAX_BLOCK_ID = dynamic(850);
 
     @Deprecated
     @DeprecationDetails(since = "1.4.0.0-PN", reason = "It's not a constant value, it may be changed on major updates and" +
@@ -220,7 +218,7 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
             list[DEAD_BUSH] = BlockDeadBush.class; //32
             list[PISTON] = BlockPiston.class; //33
             list[PISTON_ARM_COLLISION] = BlockPistonHead.class; //34
-            list[WOOL] = BlockWool.class; //35
+            list[WHITE_WOOL] = BlockWool.class; //35
             list[DANDELION] = BlockDandelion.class; //37
             list[RED_FLOWER] = BlockFlower.class; //38
             list[BROWN_MUSHROOM] = BlockMushroomBrown.class; //39
@@ -825,6 +823,22 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
             list[MANGROVE_WOOD] = BlockWoodMangrove.class;//752
             list[STRIPPED_MANGROVE_WOOD] = BlockWoodStrippedMangrove.class;//753
             list[DOUBLE_MANGROVE_SLAB] = BlockDoubleSlabMangrove.class;//754
+
+            list[LIGHT_GRAY_WOOL] = BlockLightGrayWool.class;//807
+            list[GRAY_WOOL] = BlockGrayWool.class;//808
+            list[BLACK_WOOL] = BlockBlackWool.class;//809
+            list[BROWN_WOOL] = BlockBrownWool.class;//810
+            list[RED_WOOL] = BlockRedWool.class;//811
+            list[ORANGE_WOOL] = BlockOrangeWool.class;//812
+            list[YELLOW_WOOL] = BlockYellowWool.class;//813
+            list[LIME_WOOL] = BlockLimeWool.class;//814
+            list[GREEN_WOOL] = BlockGreenWool.class;//815
+            list[CYAN_WOOL] = BlockCyanWool.class;//816
+            list[LIGHT_BLUE_WOOL] = BlockLightBlueWool.class;//817
+            list[BLUE_WOOL] = BlockBlueWool.class;//818
+            list[PURPLE_WOOL] = BlockPurpleWool.class;//819
+            list[MAGENTA_WOOL] = BlockMagentaWool.class;//820
+            list[PINK_WOOL] = BlockPinkWool.class;//821
             initializing = true;
 
             for (int id = 0; id < MAX_BLOCK_ID; id++) {
@@ -1227,7 +1241,7 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
     private static int nextBlockId = 1000;
 
     @PowerNukkitXOnly
-    @Since("1.19.60-r2")
+    @Since("1.19.62-r1")
     private final static SortedMap<String, CustomBlock> SORTED_CUSTOM_BLOCK = new TreeMap<>(MinecraftNamespaceComparator::compareFNV);
 
     /**
@@ -1387,10 +1401,22 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         return 0;
     }
 
+    /**
+     * 当玩家使用与左键或者右键方块时会触发，常被用于处理例如物品展示框左键掉落物品这种逻辑<br>
+     * 触发点在{@link Player}的onBlockBreakStart中
+     * <p>
+     * It will be triggered when the player uses the left or right click on the block, which is often used to deal with logic such as left button dropping items in the item frame<br>
+     * The trigger point is in the onBlockBreakStart of {@link Player}
+     *
+     * @param player the player
+     * @param action the action
+     * @return 状态值，返回值不为0代表这是一个touch操作而不是一个挖掘方块的操作<br>Status value, if the return value is not 0, it means that this is a touch operation rather than a mining block operation
+     */
     @PowerNukkitOnly
     @Since("1.4.0.0-PN")
     public int onTouch(@Nullable Player player, PlayerInteractEvent.Action action) {
-        return onUpdate(Level.BLOCK_UPDATE_TOUCH);
+        onUpdate(Level.BLOCK_UPDATE_TOUCH);
+        return 0;
     }
 
     @PowerNukkitOnly
@@ -1869,6 +1895,15 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         return 1.0 / speed;
     }
 
+    public double getBreakTime(Item item, Player player) {
+        return this.calculateBreakTime(item, player);
+    }
+
+    public double getBreakTime(Item item) {
+        return this.calculateBreakTime(item);
+    }
+
+
     /**
      * @link calculateBreakTime(@ Nonnull Item item, @ Nullable Player player)
      */
@@ -1888,6 +1923,28 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
     @PowerNukkitOnly
     @Since("1.4.0.0-PN")
     public double calculateBreakTime(@NotNull Item item, @Nullable Player player) {
+        double seconds = this.calculateBreakTimeNotInAir(item, player);
+
+        if (player != null) {
+            //玩家距离上次在空中过去5tick之后，才认为玩家是在地上挖掘。
+            //如果单纯用onGround检测，这个方法返回的时间将会不连续。
+            if (player.getServer().getTick() - player.getLastInAirTick() < 5) {
+                seconds *= 5;
+            }
+        }
+        return seconds;
+    }
+
+    /**
+     * 忽略玩家在空中时，计算方块的挖掘时间
+     *
+     * @param item   挖掘该方块的物品
+     * @param player 挖掘该方块的玩家
+     * @return 方块的挖掘时间
+     */
+    @PowerNukkitOnly
+    @Since("1.4.0.0-PN")
+    public double calculateBreakTimeNotInAir(@NotNull Item item, @Nullable Player player) {
         double seconds = 0;
         double blockHardness = getHardness();
         boolean canHarvest = canHarvest(item);
@@ -1942,12 +1999,7 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
             if (player.isInsideOfWater() && !hasAquaAffinity) {
                 seconds *= hasConduitPower && blockHardness >= 0.5 ? 2.5 : 5;
             }
-
-            if (!player.isOnGround()) {
-                seconds *= 5;
-            }
         }
-
         return seconds;
     }
 
@@ -2005,7 +2057,7 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
                 speedMultiplier /= hasConduitPower && blockHardness >= 0.5 ? 2.5 : 5;
             }
 
-            if (!player.isOnGround()) {
+            if (player.getServer().getTick() - player.getLastInAirTick() < 5) {
                 speedMultiplier /= 5;
             }
         }
@@ -2025,93 +2077,6 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         }
 
         return Math.ceil(1 / damage);
-    }
-
-    @DeprecationDetails(since = "1.4.0.0-PN", reason = "Not completely accurate", replaceWith = "calculateBreakeTime()")
-    @Deprecated
-    @PowerNukkitDifference(info = "Special condition for the leaves", since = "1.4.0.0-PN")
-    public double getBreakTime(Item item, Player player) {
-        Objects.requireNonNull(item, "getBreakTime: Item can not be null");
-        Objects.requireNonNull(player, "getBreakTime: Player can not be null");
-        double blockHardness = getHardness();
-
-        if (blockHardness == 0) {
-            return 0;
-        }
-
-        int blockId = getId();
-        boolean correctTool = correctTool0(getToolType(), item, blockId);
-        boolean canHarvestWithHand = canHarvestWithHand();
-        int itemToolType = toolType0(item, blockId);
-        int itemTier = item.getTier();
-        int efficiencyLoreLevel = Optional.ofNullable(item.getEnchantment(Enchantment.ID_EFFICIENCY))
-                .map(Enchantment::getLevel).orElse(0);
-        int hasteEffectLevel = Optional.ofNullable(player.getEffect(Effect.HASTE))
-                .map(Effect::getAmplifier).orElse(0);
-        //TODO Fix the break time with CONDUIT_POWER, it's not right
-        int conduitPowerLevel = Optional.ofNullable(player.getEffect(Effect.CONDUIT_POWER))
-                .map(e -> /*(e.getAmplifier() +1) * 4*/ e.getAmplifier())
-                .orElse(0);
-        hasteEffectLevel += conduitPowerLevel;
-        boolean insideOfWaterWithoutAquaAffinity = player.isInsideOfWater() && conduitPowerLevel <= 0 &&
-                Optional.ofNullable(player.getInventory().getHelmet().getEnchantment(Enchantment.ID_WATER_WORKER))
-                        .map(Enchantment::getLevel).map(l -> l >= 1).orElse(false);
-        boolean outOfWaterButNotOnGround = (!player.isInsideOfWater()) && (!player.isOnGround());
-        return breakTime0(blockHardness, correctTool, canHarvestWithHand, blockId, itemToolType, itemTier,
-                efficiencyLoreLevel, hasteEffectLevel, insideOfWaterWithoutAquaAffinity, outOfWaterButNotOnGround);
-    }
-
-    /**
-     * @param item item used
-     * @return break time
-     * @deprecated This function is lack of Player class and is not accurate enough, use {@link #getBreakTime(Item, Player)}
-     */
-    @PowerNukkitDifference(info = "Special condition for the hoe and netherie support", since = "1.4.0.0-PN")
-    @Deprecated
-    public double getBreakTime(Item item) {
-        double base = this.getHardness() * 1.5;
-        if (this.canBeBrokenWith(item)) {
-            if (
-                    (this.getToolType() == ItemTool.TYPE_SHEARS && item.isShears()) ||
-                            (this.getToolType() == ItemTool.TYPE_SHEARS && item.isHoe())) {
-                base /= 15;
-            } else if (
-                    (this.getToolType() == ItemTool.TYPE_PICKAXE && item.isPickaxe()) ||
-                            (this.getToolType() == ItemTool.TYPE_AXE && item.isAxe()) ||
-                            (this.getToolType() == ItemTool.TYPE_SHOVEL && item.isShovel()) ||
-                            (this.getToolType() == ItemTool.TYPE_HOE && item.isHoe())
-            ) {
-                int tier = item.getTier();
-                switch (tier) {
-                    case ItemTool.TIER_WOODEN:
-                        base /= 2;
-                        break;
-                    case ItemTool.TIER_STONE:
-                        base /= 4;
-                        break;
-                    case ItemTool.TIER_IRON:
-                        base /= 6;
-                        break;
-                    case ItemTool.TIER_DIAMOND:
-                        base /= 8;
-                        break;
-                    case ItemTool.TIER_NETHERITE:
-                        base /= 9;
-                        break;
-                    case ItemTool.TIER_GOLD:
-                        base /= 12;
-                        break;
-                }
-            }
-        } else {
-            base *= 3.33;
-        }
-
-        if (item.isSword()) {
-            base *= 0.5;
-        }
-
-        return base;
     }
 
     public boolean canBeBrokenWith(Item item) {
@@ -2605,9 +2570,6 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         }
     }
 
-    @PowerNukkitDifference(
-            info = "Prevents players from getting invalid items by limiting the return to the maximum damage defined in getMaxItemDamage()",
-            since = "1.4.0.0-PN")
     public Item toItem() {
         return asItemBlock(1);
     }
