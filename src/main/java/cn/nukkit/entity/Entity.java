@@ -603,7 +603,7 @@ public abstract class Entity extends Location implements Metadatable {
     }
 
     /**
-     * 创建一个实体从实体名,名称从{@link Server#registerEntities registerEntities}源代码查询
+     * 创建一个实体从实体名,名称从{@link Server#init registerEntities}源代码查询
      * <p>
      * Create an entity from entity name, name from {@link Server#registerEntities registerEntities} source code query
      *
@@ -964,6 +964,9 @@ public abstract class Entity extends Location implements Metadatable {
         playAnimationOnEntities(animation, entities, viewers);
     }
 
+    /**
+     * 实体类初始化
+     */
     @PowerNukkitXInternal
     public static void init() {
         registerEntity("Lightning", EntityLightning.class);
@@ -1525,10 +1528,12 @@ public abstract class Entity extends Location implements Metadatable {
 
     }
 
+    @PowerNukkitXInternal
     public void recalculateBoundingBox() {
         this.recalculateBoundingBox(true);
     }
 
+    @PowerNukkitXInternal
     public void recalculateBoundingBox(boolean send) {
         float entityHeight = getCurrentHeight();
         float height = entityHeight * this.scale;
@@ -1644,6 +1649,8 @@ public abstract class Entity extends Location implements Metadatable {
 
     /**
      * The name that English name of the type of this entity.
+     * <p>
+     * 该实体类型的英文名称名称。
      */
     @PowerNukkitOnly
     @Since("1.5.1.0-PN")
@@ -1652,7 +1659,9 @@ public abstract class Entity extends Location implements Metadatable {
     }
 
     /**
-     * Similar to {@link #getName()}, but if the name is blank or empty it returns the static name instead.
+     * Similar to {@link #getName()}, but if the name is blank or empty it returns the {@link #getOriginalName()} instead.
+     * <p>
+     * 类似于 {@link #getName()}，但如果名称为空或为空，则返回{@link #getOriginalName()}
      */
     @PowerNukkitOnly
     @Since("1.5.1.0-PN")
@@ -1666,7 +1675,9 @@ public abstract class Entity extends Location implements Metadatable {
     }
 
     /**
-     * The current name used by this entity in the name tag, or the static name if the entity don't have nametag.
+     * The current name used by this entity in the name tag, or the {@link #getOriginalName()} if the entity don't have nametag.
+     * <p>
+     * 此实体在名称标签中使用的当前名称，如果实体没有名称标签，则为{@link #getOriginalName()}
      */
     @NotNull
     public String getName() {
@@ -1682,7 +1693,6 @@ public abstract class Entity extends Location implements Metadatable {
     }
 
     public void spawnTo(Player player) {
-
         if (!this.hasSpawned.containsKey(player.getLoaderId()) && this.chunk != null && player.usedChunks.containsKey(Level.chunkHash(this.chunk.getX(), this.chunk.getZ()))) {
             this.hasSpawned.put(player.getLoaderId(), player);
             player.dataPacket(createAddEntityPacket());
@@ -1701,6 +1711,7 @@ public abstract class Entity extends Location implements Metadatable {
         }
     }
 
+    @PowerNukkitXInternal
     protected DataPacket createAddEntityPacket() {
         AddEntityPacket addEntity = new AddEntityPacket();
         addEntity.type = this.getNetworkId();
@@ -1795,6 +1806,7 @@ public abstract class Entity extends Location implements Metadatable {
      * @param source 记录伤害源的事件<br>Record the event of the source of the attack
      * @return 是否攻击成功<br>Whether the attack was successful
      */
+    @PowerNukkitXInternal
     public boolean attack(EntityDamageEvent source) {
         //火焰保护附魔实现
         if (hasEffect(Effect.FIRE_RESISTANCE)
@@ -2052,10 +2064,12 @@ public abstract class Entity extends Location implements Metadatable {
         return false;
     }
 
+    @PowerNukkitXInternal
     public boolean entityBaseTick() {
         return this.entityBaseTick(1);
     }
 
+    @PowerNukkitXInternal
     public boolean entityBaseTick(int tickDiff) {
         Timings.entityBaseTickTimer.startTiming();
 
@@ -2205,6 +2219,7 @@ public abstract class Entity extends Location implements Metadatable {
         return nearestPortal;
     }
 
+    @PowerNukkitXInternal
     @PowerNukkitDifference(since = "1.6.0.0-PNX", info = "add support for the new movement packet MoveEntityDeltaPacket")
     public void updateMovement() {
         //这样做是为了向后兼容旧插件
@@ -2267,18 +2282,27 @@ public abstract class Entity extends Location implements Metadatable {
      * @param pitch   上下旋转
      * @param headYaw headYaw
      */
+    @PowerNukkitXInternal
     public void addMovement(double x, double y, double z, double yaw, double pitch, double headYaw) {
         this.level.addEntityMovement(this, x, y, z, yaw, pitch, headYaw);
     }
 
-    /*
-     * 请注意此方法仅向客户端发motion包，并不会真正的将motion数值加到实体的motion(x|y|z)上<p/>
-     * 如果你想在实体的motion基础上增加，请直接将要添加的motion数值加到实体的motion(x|y|z)上，像这样：<p/>
-     * entity.motionX += vector3.x;<p/>
-     * entity.motionY += vector3.y;<p/>
-     * entity.motionZ += vector3.z;<p/>
+    /**
+     * 请注意此方法仅向客户端发motion包，并不会真正的将motion数值加到实体的motion(x|y|z)上<br>
+     * 如果你想在实体的motion基础上增加，请直接将要添加的motion数值加到实体的motion(x|y|z)上，像这样：<br>
+     * entity.motionX += vector3.x;<br>
+     * entity.motionY += vector3.y;<br>
+     * entity.motionZ += vector3.z;<br>
      * 对于玩家实体，你不应该使用此方法！
+     * <p>
+     * Please note that this method only sends motion packets to the client, and does not actually add the motion value to the motion (x|y|z) of the entity<br>
+     * If you want to increase the motion based on the entity, please directly add the The added motion value is added to the entity's motion(x|y|z), like this:<br>
+     * entity.motionX += vector3.x;<br>
+     * entity.motionY += vector3.y;<br>
+     * entity. motionZ += vector3.z;<br>
+     * For player entities, you should not use this method!
      */
+    @PowerNukkitXInternal
     public void addMotion(double motionX, double motionY, double motionZ) {
         SetEntityMotionPacket pk = new SetEntityMotionPacket();
         pk.eid = this.id;
@@ -2289,6 +2313,7 @@ public abstract class Entity extends Location implements Metadatable {
         Server.broadcastPacket(this.hasSpawned.values(), pk);
     }
 
+    @PowerNukkitXInternal
     @PowerNukkitXOnly
     @Since("1.19.31-r1")
     protected void broadcastMovement() {
@@ -3428,11 +3453,23 @@ public abstract class Entity extends Location implements Metadatable {
         return false;
     }
 
-    //return runtime id (changed after restart the server)
+    /**
+     * Gets runtime id
+     *
+     * @return return runtime id (changed after restart the server)
+     */
+    @PowerNukkitXInternal
     public long getId() {
         return this.id;
     }
 
+    /**
+     * 获得这个实体对应的UUID
+     * <p>
+     * Get the UUID corresponding to this entity
+     *
+     * @return the unique id
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public UUID getUniqueId() {
@@ -3699,12 +3736,26 @@ public abstract class Entity extends Location implements Metadatable {
         return false;
     }
 
+    /**
+     * 向该实体的NBT中添加一个TAG，可以用{@link #containTag(String)}来查询一个实体是否拥有某个tag
+     * <p>
+     * Add a TAG to the entity's NBT, you can use {@link #containTag(String)} to query whether an entity has a certain tag
+     *
+     * @param tag the tag
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public void addTag(String tag) {
         this.namedTag.putList(this.namedTag.getList("Tags", StringTag.class).add(new StringTag("", tag)));
     }
 
+    /**
+     * 移除该实体中的这个Tag
+     * <p>
+     * Remove this Tag from this entity
+     *
+     * @param tag the tag
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public void removeTag(String tag) {
@@ -3713,6 +3764,14 @@ public abstract class Entity extends Location implements Metadatable {
         this.namedTag.putList(tags);
     }
 
+    /**
+     * 该实体是否包含这个Tag
+     * <p>
+     * Does the entity contain this Tag
+     *
+     * @param tag the tag
+     * @return the boolean
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public boolean containTag(String tag) {
@@ -3725,12 +3784,26 @@ public abstract class Entity extends Location implements Metadatable {
         return this.namedTag.getList("Tags", StringTag.class).getAll();
     }
 
+    /**
+     * 实体的冻结程度
+     * <p>
+     * Entity freeze level
+     *
+     * @return Entity freeze level(0-1)
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public float getFreezingEffectStrength() {
         return ((FloatEntityData) this.getDataProperty(DATA_FREEZING_EFFECT_STRENGTH)).getData();
     }
 
+    /**
+     * 设置该实体的冻结程度
+     * <p>
+     * Sets freezing effect strength.
+     *
+     * @param strength the strength
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public void setFreezingEffectStrength(float strength) {
@@ -3745,6 +3818,13 @@ public abstract class Entity extends Location implements Metadatable {
         return this.freezingTicks;
     }
 
+    /**
+     * 设置实体的冻结tick，这会影响实体的冻结程度{@link #getFreezingEffectStrength}
+     * <p>
+     * Sets the entity's freezing tick, which affects how much the entity freezes {@link #getFreezingEffectStrength}
+     *
+     * @param ticks the ticks (0-140)
+     */
     @PowerNukkitXOnly
     @Since("1.6.0.0-PNX")
     public void setFreezingTicks(int ticks) {
@@ -3813,6 +3893,14 @@ public abstract class Entity extends Location implements Metadatable {
         Server.broadcastPacket(players, pk);
     }
 
+    /**
+     * Play this animation to everyone who can see the entity
+     * <p>
+     * 向所有能看到该实体的播放此动画
+     *
+     * @param action     the action
+     * @param rowingTime the rowing time
+     */
     @PowerNukkitXOnly
     @Since("1.19.60-r1")
     public void playActionAnimation(AnimatePacket.Action action, float rowingTime) {

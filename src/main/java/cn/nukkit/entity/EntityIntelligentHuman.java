@@ -21,7 +21,7 @@ import cn.nukkit.nbt.tag.CompoundTag;
 import cn.nukkit.network.protocol.AddPlayerPacket;
 import cn.nukkit.network.protocol.RemoveEntityPacket;
 import cn.nukkit.network.protocol.SetEntityLinkPacket;
-import cn.nukkit.utils.*;
+import cn.nukkit.utils.Utils;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -316,6 +316,7 @@ public class EntityIntelligentHuman extends EntityIntelligent implements EntityI
         return "EntityIntelligentHuman";
     }
 
+    @NotNull
     @Override
     public String getName() {
         return this.getNameTag();
